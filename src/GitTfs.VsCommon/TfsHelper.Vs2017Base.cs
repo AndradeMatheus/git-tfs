@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
 
@@ -187,14 +188,26 @@ namespace GitTfs.VsCommon
 
         protected override TfsTeamProjectCollection GetTfsCredential(Uri uri)
         {
-            var vssCred = HasCredentials
-                ? new VssClientCredentials(new WindowsCredential(GetCredential()))
-                : VssClientCredentials.LoadCachedCredentials(uri, false, CredentialPromptType.PromptIfNeeded);
+            var vssCredCache = VssClientCredentials.LoadCachedCredentials(uri, false, CredentialPromptType.PromptIfNeeded);
+            var tfs = new TfsTeamProjectCollection(uri, vssCredCache);
+            var netCredential = GetCredential();
+            var tfsCredential = (NetworkCredential)tfs.Credentials;
 
-            return new TfsTeamProjectCollection(uri, vssCred);
+            if (!tfs.HasAuthenticated)
+            {
+                tfs.Authenticate();
+            }
+
+            if (!tfs.HasAuthenticated || (tfsCredential.UserName != "" && netCredential.UserName != tfsCredential.UserName))
+            {
+                var vssCred = new VssClientCredentials(new WindowsCredential(netCredential));
+                tfs = new TfsTeamProjectCollection(uri, vssCred);
+            }
+
+            return tfs;
 #pragma warning restore 618
         }
-
+        
         protected override string GetDialogAssemblyPath()
         {
             return Path.Combine(GetVsInstallDir(), myTeamExplorerFolder, DialogAssemblyName + ".dll");
